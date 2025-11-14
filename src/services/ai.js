@@ -26,44 +26,44 @@ export async function analyzeMessage(message) {
 
     // Create prompt for Gemini to parse message into structured data
     const prompt = `Bạn là một hệ thống phân tích tin nhắn thông minh.
-Nhiệm vụ của bạn là phân tích tin nhắn của người dùng và chuyển đổi thành dữ liệu có cấu trúc (JSON).
+      Nhiệm vụ của bạn là phân tích tin nhắn của người dùng và chuyển đổi thành dữ liệu có cấu trúc (JSON).
 
-Tin nhắn của người dùng: ${message}
+      Tin nhắn của người dùng: ${message}
 
-Yêu cầu:
-- Phân tích tin nhắn và trích xuất thông tin về các sản phẩm, hàng hóa, số lượng, đơn vị, giá cả, v.v.
-- Trả về kết quả dưới dạng JSON với cấu trúc:
-  {
-    "items": [
-      {
-        "name": "Tên sản phẩm/hàng hóa",
-        "quantity": Số lượng (number),
-        "unit": "Đơn vị (ví dụ: cái, kg, thùng, ...)",
-        "price": Giá (number, optional),
-        "total": Tổng tiền (number, optional)
-      }
-    ],
-    "summary": {
-      "total_items": Tổng số mặt hàng,
-      "total_quantity": Tổng số lượng,
-      "total_amount": Tổng tiền (nếu có)
-    },
-    "metadata": {
-      "date": "Ngày tháng (nếu có trong tin nhắn)",
-      "type": "Loại giao dịch (nhập/xuất/bán/mua, ...)",
-      "notes": "Ghi chú thêm (nếu có)"
-    }
-  }
+      Yêu cầu:
+      - Phân tích tin nhắn và trích xuất thông tin về các sản phẩm, hàng hóa, số lượng, đơn vị, giá cả, v.v.
+      - Trả về kết quả dưới dạng JSON với cấu trúc:
+        {
+          "items": [
+            {
+              "name": "Tên sản phẩm/hàng hóa",
+              "quantity": Số lượng (number),
+              "unit": "Đơn vị (ví dụ: cái, kg, thùng, ...)",
+              "price": Giá (number, optional),
+              "total": Tổng tiền (number, optional)
+            }
+          ],
+          "summary": {
+            "total_items": Tổng số mặt hàng,
+            "total_quantity": Tổng số lượng,
+            "total_amount": Tổng tiền (nếu có)
+          },
+          "metadata": {
+            "date": "Ngày tháng (nếu có trong tin nhắn)",
+            "type": "Loại giao dịch (nhập/xuất/bán/mua, ...)",
+            "notes": "Ghi chú thêm (nếu có)"
+          }
+        }
 
-- Nếu tin nhắn không chứa thông tin về sản phẩm/hàng hóa, trả về items là mảng rỗng []
-- Chỉ trả về JSON, không thêm text giải thích
-- Đảm bảo JSON hợp lệ, có thể parse được
+      - Nếu tin nhắn không chứa thông tin về sản phẩm/hàng hóa, trả về items là mảng rỗng []
+      - Chỉ trả về JSON, không thêm text giải thích
+      - Đảm bảo JSON hợp lệ, có thể parse được
 
-Hãy phân tích và trả về JSON:`;
+      Hãy phân tích và trả về JSON:`;
 
     // Get the generative model
     const model = genAI.getGenerativeModel({
-      model: process.env.GEMINI_MODEL || "gemini-1.5-flash",
+      model: process.env.GEMINI_MODEL || "gemini-flash-latest",
       generationConfig: {
         temperature: 0.3, // Lower temperature for more structured output
         maxOutputTokens: 2000,
@@ -71,7 +71,7 @@ Hãy phân tích và trả về JSON:`;
     });
 
     console.log("📤 Sending request to Gemini API...");
-    console.log("   Model:", process.env.GEMINI_MODEL || "gemini-1.5-flash");
+    console.log("   Model:", process.env.GEMINI_MODEL || "gemini-flash-latest");
     console.log("   Prompt length:", prompt.length, "characters");
 
     // Generate content with timeout
@@ -264,7 +264,7 @@ Hãy trả lời câu hỏi dựa trên dữ liệu trên:`;
 
     // Get the generative model
     const model = genAI.getGenerativeModel({
-      model: process.env.GEMINI_MODEL || "gemini-1.5-flash",
+      model: process.env.GEMINI_MODEL || "gemini-flash-latest",
       generationConfig: {
         temperature: 0.7, // Higher temperature for more natural responses
         maxOutputTokens: 2000,
@@ -272,7 +272,7 @@ Hãy trả lời câu hỏi dựa trên dữ liệu trên:`;
     });
 
     console.log("📤 Sending query request to Gemini API...");
-    console.log("   Model:", process.env.GEMINI_MODEL || "gemini-1.5-flash");
+    console.log("   Model:", process.env.GEMINI_MODEL || "gemini-flash-latest");
     console.log("   Data summary size:", JSON.stringify(dataSummary).length, "characters");
     console.log("   Question:", question);
 
