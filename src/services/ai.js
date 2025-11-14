@@ -11,14 +11,18 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
  */
 export async function analyzeMessage(message) {
   try {
+    // Validate API key
     if (
       !process.env.GEMINI_API_KEY ||
-      process.env.GEMINI_API_KEY === "your_gemini_api_key"
+      process.env.GEMINI_API_KEY === "your_gemini_api_key" ||
+      process.env.GEMINI_API_KEY.trim() === ""
     ) {
       throw new Error("GEMINI_API_KEY chưa được cấu hình trong .env file");
     }
 
     console.log("🤖 Analyzing message with Gemini AI...");
+    console.log("   API Key:", process.env.GEMINI_API_KEY.substring(0, 10) + "...");
+    console.log("   Message:", message.substring(0, 100) + (message.length > 100 ? "..." : ""));
 
     // Create prompt for Gemini to parse message into structured data
     const prompt = `Bạn là một hệ thống phân tích tin nhắn thông minh.
@@ -66,10 +70,23 @@ Hãy phân tích và trả về JSON:`;
       },
     });
 
-    // Generate content
-    const result = await model.generateContent(prompt);
+    console.log("📤 Sending request to Gemini API...");
+    console.log("   Model:", process.env.GEMINI_MODEL || "gemini-1.5-flash");
+    console.log("   Prompt length:", prompt.length, "characters");
+
+    // Generate content with timeout
+    const timeoutMs = 30000; // 30 seconds timeout
+    const generatePromise = model.generateContent(prompt);
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("Gemini API timeout after 30 seconds")), timeoutMs);
+    });
+
+    const result = await Promise.race([generatePromise, timeoutPromise]);
+    console.log("✅ Received response from Gemini API");
+    
     const response = await result.response;
     const text = response.text();
+    console.log("📥 Response text length:", text.length, "characters");
 
     // Extract JSON from response (handle markdown code blocks)
     let jsonText = text.trim();
@@ -94,7 +111,27 @@ Hãy phân tích và trả về JSON:`;
       data: parsedData,
     };
   } catch (error) {
-    console.error("❌ Error analyzing message:", error.message);
+    console.error("❌ Error analyzing message:");
+    console.error("   Error type:", error.constructor.name);
+    console.error("   Error message:", error.message);
+    console.error("   Error stack:", error.stack);
+    
+    // Check for specific error types
+    if (error.message.includes("timeout")) {
+      return {
+        success: false,
+        message: "❌ Lỗi: Gemini API timeout. Vui lòng thử lại sau.",
+        data: null,
+      };
+    }
+    
+    if (error.message.includes("API_KEY") || error.message.includes("API key")) {
+      return {
+        success: false,
+        message: "❌ Lỗi: GEMINI_API_KEY không hợp lệ. Vui lòng kiểm tra lại.",
+        data: null,
+      };
+    }
     
     // Return error response
     return {
@@ -160,14 +197,17 @@ function generateResponseMessage(parsedData) {
  */
 export async function queryAndAnalyzeData(groupId, question) {
   try {
+    // Validate API key
     if (
       !process.env.GEMINI_API_KEY ||
-      process.env.GEMINI_API_KEY === "your_gemini_api_key"
+      process.env.GEMINI_API_KEY === "your_gemini_api_key" ||
+      process.env.GEMINI_API_KEY.trim() === ""
     ) {
       throw new Error("GEMINI_API_KEY chưa được cấu hình trong .env file");
     }
 
     console.log(`🔍 Querying data for group ${groupId}...`);
+    console.log("   API Key:", process.env.GEMINI_API_KEY.substring(0, 10) + "...");
 
     // Get all data from database for this group
     const groupData = getAllGroupData(groupId, 1000);
@@ -231,10 +271,24 @@ Hãy trả lời câu hỏi dựa trên dữ liệu trên:`;
       },
     });
 
-    // Generate content
-    const result = await model.generateContent(prompt);
+    console.log("📤 Sending query request to Gemini API...");
+    console.log("   Model:", process.env.GEMINI_MODEL || "gemini-1.5-flash");
+    console.log("   Data summary size:", JSON.stringify(dataSummary).length, "characters");
+    console.log("   Question:", question);
+
+    // Generate content with timeout
+    const timeoutMs = 30000; // 30 seconds timeout
+    const generatePromise = model.generateContent(prompt);
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("Gemini API timeout after 30 seconds")), timeoutMs);
+    });
+
+    const result = await Promise.race([generatePromise, timeoutPromise]);
+    console.log("✅ Received response from Gemini API");
+    
     const response = await result.response;
     const answer = response.text();
+    console.log("📥 Answer length:", answer.length, "characters");
 
     console.log("📥 Gemini answer:", answer);
 
@@ -250,7 +304,20 @@ Hãy trả lời câu hỏi dựa trên dữ liệu trên:`;
       },
     };
   } catch (error) {
-    console.error("❌ Error querying and analyzing data:", error);
+    console.error("❌ Error querying and analyzing data:");
+    console.error("   Error type:", error.constructor.name);
+    console.error("   Error message:", error.message);
+    console.error("   Error stack:", error.stack);
+    
+    // Check for specific error types
+    if (error.message.includes("timeout")) {
+      throw new Error("Gemini API timeout. Vui lòng thử lại sau.");
+    }
+    
+    if (error.message.includes("API_KEY") || error.message.includes("API key")) {
+      throw new Error("GEMINI_API_KEY không hợp lệ. Vui lòng kiểm tra lại.");
+    }
+    
     throw error;
   }
 }
