@@ -1,0 +1,36 @@
+{
+  "name": "ai-zalo-bot-oa",
+  "version": "1.0.0",
+  "description": "Zalo Official Account Bot using OpenAPI for GMF group messaging",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "keywords": [
+    "zalo",
+    "official-account",
+    "oa",
+    "gmf",
+    "webhook",
+    "openapi"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.5",
+    "dotenv": "^16.3.1",
+    "cors": "^2.8.5",
+    "crypto": "^1.0.1",
+    "@google/generative-ai": "^0.21.0",
+    "better-sqlite3": "^9.2.2",
+    "swagger-ui-express": "^5.0.0",
+    "swagger-jsdoc": "^6.2.8"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
+
