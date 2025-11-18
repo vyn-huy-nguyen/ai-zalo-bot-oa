@@ -130,6 +130,132 @@ app.get("/zalo_verifierClsq2DBqPX4YXj1AzAjrJ1EExdF_-3ejDJKu.html", (req, res) =>
   }
 });
 
+// Serve static files from exports directory
+const exportsDir = path.join(__dirname, "../data/exports");
+app.use("/exports", express.static(exportsDir, {
+  setHeaders: (res, filePath) => {
+    // Set proper content-type for CSV files
+    if (filePath.endsWith(".csv")) {
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `inline; filename="${path.basename(filePath)}"`);
+    }
+  }
+}));
+
+// CSV preview route (render as HTML table for quick viewing)
+app.get("/exports/view/:filename", (req, res) => {
+  try {
+    const filename = req.params.filename;
+    if (!filename || filename.includes("..")) {
+      return res.status(400).send("Invalid filename");
+    }
+
+    const filePath = path.join(exportsDir, filename);
+    if (!filePath.startsWith(exportsDir)) {
+      return res.status(403).send("Access denied");
+    }
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).send("File not found");
+    }
+
+    const csvContent = fs.readFileSync(filePath, "utf8");
+    const rows = csvContent
+      .split(/\r?\n/)
+      .filter((line) => line.trim().length > 0)
+      .map((line) => parseCsvLine(line));
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(renderCsvPreview(filename, rows));
+  } catch (error) {
+    console.error("❌ Error rendering CSV preview:", error);
+    res.status(500).send("Error rendering CSV preview");
+  }
+});
+
+function parseCsvLine(line) {
+  const result = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const nextChar = line[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === "," && !inQuotes) {
+      result.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+
+  result.push(current);
+  return result;
+}
+
+function renderCsvPreview(filename, rows) {
+  const escapedFilename = filename.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const tableRows = rows
+    .map((row, index) => {
+      const cells = row
+        .map((cell) =>
+          `<td>${(cell || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .trim()}</td>`
+        )
+        .join("");
+      const rowClass = index === 0 ? "header-row" : "";
+      return `<tr class="${rowClass}">${cells}</tr>`;
+    })
+    .join("");
+
+  return `<!DOCTYPE html>
+  <html lang="vi">
+    <head>
+      <meta charset="utf-8" />
+      <title>CSV Preview - ${escapedFilename}</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h1 { font-size: 20px; margin-bottom: 10px; }
+        table { border-collapse: collapse; width: 100%; overflow-x: auto; }
+        th, td { border: 1px solid #ddd; padding: 8px; font-size: 14px; }
+        th, .header-row td { background: #f0f0f0; font-weight: bold; }
+        tr:nth-child(even) { background: #fafafa; }
+        tr:hover { background: #f1f1f1; }
+        .actions { margin-top: 15px; }
+        .actions a { margin-right: 15px; color: #007bff; text-decoration: none; }
+        .actions a:hover { text-decoration: underline; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>CSV Preview: ${escapedFilename}</h1>
+        <div class="actions">
+          <a href="/exports/${escapedFilename}" target="_blank">⬇️ Tải CSV</a>
+          <a href="javascript:window.history.back()">⬅️ Quay lại</a>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            ${tableRows || "<tr><td>File rỗng</td></tr>"}
+          </table>
+        </div>
+      </div>
+    </body>
+  </html>`;
+}
+
 // Routes
 app.use("/", webhookRoutes);
 app.use("/api", apiRoutes);
@@ -181,15 +307,19 @@ app.get("/health", (req, res) => {
 
 // Start server
 app.listen(PORT, () => {
+  const serverUrl = process.env.SERVER_URL || `http://localhost:${PORT}`;
+  
   console.log("\n🚀 Zalo OA Bot Webhook Server started");
   console.log(`📡 Listening on http://localhost:${PORT}`);
-  console.log(`📥 Webhook URL: http://localhost:${PORT}/webhook`);
+  console.log(`📥 Webhook URL: ${serverUrl}/webhook`);
   console.log(`❤️  Health check: http://localhost:${PORT}/health`);
-  console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs\n`);
+  console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
+  console.log(`📁 Exports files: ${serverUrl}/exports/<filename>\n`);
   console.log("⚠️  Make sure to:");
   console.log("   1. Configure webhook URL in Zalo Developer Console");
   console.log("   2. Set VERIFY_TOKEN in .env file");
   console.log("   3. Set WEBHOOK_SECRET in .env file");
-  console.log("   4. Configure ZALO_ACCESS_TOKEN in .env file (optional, for initial token)");
-  console.log("   5. Configure ZALO_REFRESH_TOKEN in .env file (required, for token refresh)\n");
+  console.log("   4. Set SERVER_URL in .env file (for CSV file links)");
+  console.log("   5. Configure ZALO_ACCESS_TOKEN in .env file (optional, for initial token)");
+  console.log("   6. Configure ZALO_REFRESH_TOKEN in .env file (required, for token refresh)\n");
 });

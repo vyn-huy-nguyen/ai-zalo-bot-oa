@@ -1,14 +1,27 @@
 # Dependencies
 node_modules/
+package-lock.json
 
 # Environment variables
 .env
+.env.local
+.env.*.local
+
+# Database
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/exports/*.csv
+data/exports/*.pdf
 
 # Logs
-*.log
 logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# OS files
+# OS
 .DS_Store
 Thumbs.db
 
@@ -17,15 +30,14 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+*~
 
-# Build files
-dist/
-build/
+# PM2
+.pm2/
 
-# Data files
-data/
-*.csv
-*.db
-*.db-shm
-*.db-wal
+# Temporary files
+*.tmp
+*.temp
 
+# Zalo verification files
+zalo_verifier*.html

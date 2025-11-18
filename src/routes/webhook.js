@@ -3,6 +3,10 @@ import { verifyWebhookSignature } from "../middleware/verifySignature.js";
 import { extractGroupId, extractMessageText } from "../utils/extractors.js";
 import { processQueryCommand } from "../handlers/queryHandler.js";
 import { processCommandMessage } from "../handlers/messageHandler.js";
+import {
+  isMessageProcessed,
+  markMessageAsProcessed,
+} from "../utils/messageDeduplicator.js";
 
 const router = express.Router();
 
@@ -58,16 +62,29 @@ async function handleWebhookEvent(event, refreshToken, fallbackToken) {
   console.log(`   OA ID: ${event.oa_id || "N/A"}`);
 
   if (MESSAGE_EVENT_TYPES.includes(eventType)) {
+    // Check for duplicate messages (deduplication)
+    if (isMessageProcessed(event)) {
+      console.log("⚠️  Duplicate message detected, skipping processing");
+      return;
+    }
+
     // Process text message - check for commands
     const messageText = extractMessageText(event);
 
-    if (messageText && messageText.trim()) {
-      // Check for /t command (query data) first
-      if (messageText.trim().startsWith("/t ")) {
+    if (messageText) {
+      const normalizedMessage = messageText.trimStart();
+      const lowerMessage = normalizedMessage.toLowerCase();
+      
+      // Check for /t command (query data) - accepts "/t" or "/t " or "/t\n"
+      if (lowerMessage.startsWith("/t")) {
+        // Mark as processed before processing to prevent duplicate processing
+        markMessageAsProcessed(event);
         await processQueryCommand(event, refreshToken, fallbackToken);
       }
-      // Check for /p command (parse and save)
-      else if (messageText.trim().startsWith("/p ")) {
+      // Check for /p command (parse and save) - accepts "/p" or "/p " or "/p\n"
+      else if (lowerMessage.startsWith("/p")) {
+        // Mark as processed before processing to prevent duplicate processing
+        markMessageAsProcessed(event);
         await processCommandMessage(event, refreshToken, fallbackToken);
       }
       // Other messages are ignored

@@ -2,6 +2,8 @@ import { analyzeMessage } from "../services/ai.js";
 import { sendGroupMessage } from "../services/zalo.js";
 import { extractGroupId, extractSenderInfo, extractMessageText } from "../utils/extractors.js";
 import { saveMessage } from "../database.js";
+import { exportToCSV } from "../utils/csvExporter.js";
+import { getFileUrl, getFileViewUrl } from "../utils/fileUrl.js";
 
 /**
  * Process message analysis (internal function)
@@ -39,36 +41,43 @@ export async function processMessageAnalysis(data, refreshToken, fallbackToken) 
     // Analyze message and convert to structured data
     const analysisResult = await analyzeMessage(message);
 
+    // If analysis failed, throw error (will be caught by caller to prevent sending message)
+    if (!analysisResult.success || !analysisResult.data) {
+      throw new Error(
+        analysisResult.error || "Failed to analyze message: No data returned from AI"
+      );
+    }
+
     // Save to database if analysis was successful
-    if (analysisResult.success && analysisResult.data) {
-      try {
-        const dbResult = saveMessage({
-          group_id: group_id,
-          author_id: author_id,
-          author_name: author_name,
-          message: message,
-          original_message: original_message,
-          parsed_data: analysisResult.data,
-          message_id: message_id || null,
-          user_id_by_app: user_id_by_app || null,
-          app_id: app_id || null,
-          oa_id: oa_id || null,
-        });
-        console.log("✅ Message saved to database, ID:", dbResult.id);
-        analysisResult.dbId = dbResult.id;
-      } catch (dbError) {
-        console.error("❌ Error saving to database:", dbError);
-        // Continue even if DB save fails
-      }
+    let dbResult = null;
+    try {
+      dbResult = saveMessage({
+        group_id: group_id,
+        author_id: author_id,
+        author_name: author_name,
+        message: message,
+        original_message: original_message,
+        parsed_data: analysisResult.data,
+        message_id: message_id || null,
+        user_id_by_app: user_id_by_app || null,
+        app_id: app_id || null,
+        oa_id: oa_id || null,
+      });
+      console.log("✅ Message saved to database, ID:", dbResult.id);
+      analysisResult.dbId = dbResult.id;
+    } catch (dbError) {
+      console.error("❌ Error saving to database:", dbError);
+      // Continue even if DB save fails, but log the error
     }
 
     // Prepare response
     return {
-      success: analysisResult.success !== false,
+      success: true,
       result: analysisResult.message || "✅ Đã nhận tin nhắn và đang xử lý...",
       reply: analysisResult.message || "✅ Đã nhận tin nhắn và đang xử lý...",
       message: analysisResult.message || "✅ Đã nhận tin nhắn và đang xử lý...",
-      data: analysisResult.data || null,
+      data: analysisResult.data,
+      dbId: dbResult?.id || null,
       timestamp: timestamp || new Date().toISOString(),
     };
   } catch (error) {
@@ -97,12 +106,14 @@ export async function processCommandMessage(event, refreshToken, fallbackToken) 
       return null;
     }
 
-    // Check if message starts with /p
-    if (!messageText || !messageText.trim().startsWith("/p ")) {
+    // Check if message starts with /p (accepts "/p" or "/p " or "/p\n")
+    const normalizedMessage = messageText?.trimStart() || "";
+    if (!normalizedMessage || !normalizedMessage.toLowerCase().startsWith("/p")) {
       return null;
     }
 
-    const content = messageText.trim().slice(3).trim(); // Remove '/p ' prefix
+    // Extract content after /p command
+    const content = normalizedMessage.slice(2).trim();
 
     if (!content) {
       console.log("⚠️ Empty message after /p, skipping");
@@ -130,37 +141,51 @@ export async function processCommandMessage(event, refreshToken, fallbackToken) 
     };
 
     // Process message analysis directly (no HTTP call needed)
+    // Flow: Analyze → Save to DB → Create CSV → Send file
     const result = await processMessageAnalysis(data, refreshToken, fallbackToken);
 
-    // Get reply from backend response
-    const reply =
-      result?.result ||
-      result?.reply ||
-      result?.message ||
-      "✅ Đã nhận tin nhắn và đang xử lý...";
+    // If analysis was successful and data was saved to DB, create CSV and send file
+    if (result.success && result.data) {
+      try {
+        // Step 1: Export to CSV (using data from Gemini analysis)
+        // CSV will dynamically handle any structure returned by Gemini
+        const csvPath = exportToCSV(
+          result.data,
+          groupId,
+          data.message_id || null
+        );
 
-    console.log(`📥 Backend response: ${reply}`);
+        console.log(`📄 CSV file created: ${csvPath}`);
 
-    // Send reply back to group
-    await sendGroupMessage(groupId, reply, refreshToken, fallbackToken);
+        // Step 2: Generate public URL for CSV file
+        const csvUrl = getFileUrl(csvPath);
+        const csvViewUrl = getFileViewUrl(csvPath);
+        console.log(`🔗 CSV file URL: ${csvUrl}`);
 
-    return { success: true, reply };
+        // Step 3: Send link to CSV file in group
+        const message = `📊 Dữ liệu đã được phân tích và xuất CSV.\n\n👀 Xem nhanh: ${csvViewUrl}\n⬇️ Tải file: ${csvUrl}`;
+        await sendGroupMessage(groupId, message, refreshToken, fallbackToken);
+
+        // File is kept in data/exports directory (not deleted)
+        console.log("✅ CSV file created and link sent to group successfully");
+        console.log(`📁 CSV file saved at: ${csvPath}`);
+        console.log(`🔗 Public URL: ${csvUrl}`);
+
+        return { success: true, csvPath, csvUrl, csvViewUrl, dbId: result.dbId };
+      } catch (csvError) {
+        console.error("❌ Error creating CSV file or sending link:", csvError);
+        // If CSV creation or sending fails, throw error to prevent sending text message
+        throw new Error(`Failed to create CSV or send link: ${csvError.message}`);
+      }
+    } else {
+      // This should not happen if processMessageAnalysis throws on error
+      throw new Error("Analysis result is invalid");
+    }
   } catch (error) {
     console.error("❌ Error processing command:", error);
-    // Try to send error message to group
-    try {
-      const groupId = extractGroupId(event);
-      if (groupId) {
-        await sendGroupMessage(
-          groupId,
-          "❌ Bot gặp lỗi khi xử lý tin nhắn. Vui lòng thử lại sau.",
-          refreshToken,
-          fallbackToken
-        );
-      }
-    } catch (sendError) {
-      console.error("❌ Error sending error message:", sendError);
-    }
+    // Do NOT send any message to group if there's an error
+    // Just log the error and return
+    console.log("⚠️  No message sent to group due to error");
     throw error;
   }
 }

@@ -58,12 +58,14 @@ export async function processQueryCommand(event, refreshToken, fallbackToken) {
       return null;
     }
 
-    // Check if message starts with /t
-    if (!messageText || !messageText.trim().startsWith("/t ")) {
+    // Check if message starts with /t (accepts "/t" or "/t " or "/t\n")
+    const normalizedMessage = messageText?.trimStart() || "";
+    if (!normalizedMessage || !normalizedMessage.toLowerCase().startsWith("/t")) {
       return null;
     }
 
-    const question = messageText.trim().slice(3).trim(); // Remove '/t ' prefix
+    // Extract question after /t command
+    const question = normalizedMessage.slice(2).trim();
 
     if (!question) {
       console.log("⚠️ Empty question after /t, skipping");
@@ -97,30 +99,22 @@ export async function processQueryCommand(event, refreshToken, fallbackToken) {
       result?.result ||
       result?.reply ||
       result?.message ||
-      "❌ Không thể truy vấn dữ liệu. Vui lòng thử lại sau.";
+      "Không tìm thấy thông tin.";
 
-    console.log(`📥 Backend query response: ${reply}`);
+    const finalReply = reply.trim();
+    if (!finalReply) {
+      console.log("⚠️ Query reply is empty after trimming, skipping send");
+      return { success: true, reply: "" };
+    }
+
+    console.log(`📥 Backend query response: ${finalReply}`);
 
     // Send reply back to group
-    await sendGroupMessage(groupId, reply, refreshToken, fallbackToken);
+    await sendGroupMessage(groupId, finalReply, refreshToken, fallbackToken);
 
-    return { success: true, reply };
+    return { success: true, reply: finalReply };
   } catch (error) {
     console.error("❌ Error processing query command:", error);
-    // Try to send error message to group
-    try {
-      const groupId = extractGroupId(event);
-      if (groupId) {
-        await sendGroupMessage(
-          groupId,
-          "❌ Bot gặp lỗi khi truy vấn dữ liệu. Vui lòng thử lại sau.",
-          refreshToken,
-          fallbackToken
-        );
-      }
-    } catch (sendError) {
-      console.error("❌ Error sending error message:", sendError);
-    }
     throw error;
   }
 }

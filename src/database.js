@@ -78,24 +78,89 @@ function createTables() {
     CREATE TABLE IF NOT EXISTS items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       message_id INTEGER NOT NULL,
-      item_name TEXT,
-      quantity INTEGER,
-      unit TEXT,
-      additional_data TEXT,
+      group_id TEXT NOT NULL,
+      item_data TEXT NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+      FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+      FOREIGN KEY (group_id) REFERENCES groups(group_id)
     )
   `);
+
+  // Ensure legacy databases have group_id in items before creating indexes
+  ensureItemsGroupIdColumn();
 
   // Create indexes for better query performance
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_messages_group_id ON messages(group_id);
     CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
     CREATE INDEX IF NOT EXISTS idx_items_message_id ON items(message_id);
+    CREATE INDEX IF NOT EXISTS idx_items_group_id ON items(group_id);
     CREATE INDEX IF NOT EXISTS idx_groups_group_id ON groups(group_id);
   `);
 
   console.log("✅ Database tables created/verified");
+}
+
+/**
+ * Ensure items table has group_id column and item_data column (migration for legacy DBs)
+ */
+function ensureItemsGroupIdColumn() {
+  try {
+    const columns = db.prepare(`PRAGMA table_info(items)`).all();
+    const columnNames = columns.map((col) => col.name);
+    
+    // Add group_id if missing
+    if (!columnNames.includes("group_id")) {
+      console.log("🔄 Migrating items table to add group_id column...");
+      db.exec(`ALTER TABLE items ADD COLUMN group_id TEXT`);
+      db.exec(`
+        UPDATE items 
+        SET group_id = (
+          SELECT m.group_id 
+          FROM messages m 
+          WHERE m.id = items.message_id
+        )
+      `);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_items_group_id ON items(group_id)`);
+      console.log("✅ Migration completed: group_id added to items table");
+    }
+    
+    // Migrate to item_data column if it doesn't exist
+    if (!columnNames.includes("item_data")) {
+      console.log("🔄 Migrating items table to add item_data column...");
+      db.exec(`ALTER TABLE items ADD COLUMN item_data TEXT`);
+      
+      // Migrate existing data: combine item_name, quantity, unit, additional_data into item_data JSON
+      const oldItems = db.prepare(`SELECT id, item_name, quantity, unit, additional_data FROM items WHERE item_data IS NULL`).all();
+      
+      oldItems.forEach((oldItem) => {
+        const itemData = {};
+        if (oldItem.item_name) itemData.name = oldItem.item_name;
+        if (oldItem.quantity !== null) itemData.quantity = oldItem.quantity;
+        if (oldItem.unit) itemData.unit = oldItem.unit;
+        
+        // Merge additional_data if it exists
+        if (oldItem.additional_data) {
+          try {
+            const additional = JSON.parse(oldItem.additional_data);
+            Object.assign(itemData, additional);
+          } catch (e) {
+            // If additional_data is not valid JSON, ignore it
+          }
+        }
+        
+        db.prepare(`UPDATE items SET item_data = ? WHERE id = ?`).run(
+          JSON.stringify(itemData),
+          oldItem.id
+        );
+      });
+      
+      console.log("✅ Migration completed: item_data added to items table");
+    }
+  } catch (error) {
+    console.error("❌ Error ensuring items table columns:", error);
+    throw error;
+  }
 }
 
 /**
@@ -185,24 +250,20 @@ export function saveMessage(messageData) {
     const savedMessageId = messageResult.lastInsertRowid;
 
     // If parsed_data has items array, save them separately
+    // Store entire item object as JSON in item_data column (flexible schema)
     if (parsed_data.items && Array.isArray(parsed_data.items) && parsed_data.items.length > 0) {
       const insertItem = db.prepare(
-        `INSERT INTO items (message_id, item_name, quantity, unit, additional_data)
-         VALUES (?, ?, ?, ?, ?)`
+        `INSERT INTO items (message_id, group_id, item_data)
+         VALUES (?, ?, ?)`
       );
 
       parsed_data.items.forEach((item) => {
-        const additionalData = { ...item };
-        delete additionalData.name;
-        delete additionalData.quantity;
-        delete additionalData.unit;
-
+        // Store entire item object as JSON - no mapping needed
+        // This allows for dynamic fields from Gemini AI
         insertItem.run(
           savedMessageId,
-          item.name,
-          item.quantity,
-          item.unit,
-          Object.keys(additionalData).length > 0 ? JSON.stringify(additionalData) : null
+          group_id,
+          JSON.stringify(item)
         );
       });
     }
@@ -247,16 +308,33 @@ export function getMessagesByGroup(groupId, limit = 100, offset = 0) {
 
 /**
  * Get items by message ID
+ * Returns items with parsed item_data JSON
  */
 export function getItemsByMessage(messageId) {
   try {
-    return db
+    const items = db
       .prepare(
-        `SELECT * FROM items 
+        `SELECT id, message_id, group_id, item_data, created_at 
+         FROM items 
          WHERE message_id = ?
          ORDER BY id`
       )
       .all(messageId);
+    
+    // Parse item_data JSON for each item
+    return items.map((item) => {
+      try {
+        return {
+          ...item,
+          item_data: JSON.parse(item.item_data)
+        };
+      } catch (e) {
+        return {
+          ...item,
+          item_data: {}
+        };
+      }
+    });
   } catch (error) {
     console.error("❌ Error getting items:", error);
     throw error;
@@ -292,16 +370,35 @@ export function getGroupStats(groupId) {
       )
       .get(groupId);
 
-    const itemStats = db
+    // Get item stats from JSON data
+    const items = db
       .prepare(
-        `SELECT 
-          COUNT(*) as total_items,
-          SUM(quantity) as total_quantity
-         FROM items i
-         JOIN messages m ON i.message_id = m.id
-         WHERE m.group_id = ?`
+        `SELECT item_data FROM items WHERE group_id = ?`
       )
-      .get(groupId);
+      .all(groupId);
+    
+    let totalItems = items.length;
+    let totalQuantity = 0;
+    
+    items.forEach((row) => {
+      try {
+        const itemData = JSON.parse(row.item_data);
+        // Try to extract quantity from various possible keys (Vietnamese or English)
+        const quantity = itemData["Số lượng"] !== undefined 
+          ? itemData["Số lượng"] 
+          : (itemData.quantity !== undefined ? itemData.quantity : 0);
+        if (typeof quantity === 'number') {
+          totalQuantity += quantity;
+        }
+      } catch (e) {
+        // Skip invalid JSON
+      }
+    });
+    
+    const itemStats = {
+      total_items: totalItems,
+      total_quantity: totalQuantity
+    };
 
     return {
       ...stats,
@@ -370,13 +467,29 @@ export function queryData(groupId, searchCriteria = {}) {
     
     if (messageIds.length > 0) {
       const placeholders = messageIds.map(() => "?").join(",");
-      items = db
+      const rawItems = db
         .prepare(
-          `SELECT * FROM items 
+          `SELECT id, message_id, group_id, item_data, created_at 
+           FROM items 
            WHERE message_id IN (${placeholders})
            ORDER BY message_id, id`
         )
         .all(...messageIds);
+      
+      // Parse item_data JSON for each item
+      items = rawItems.map((item) => {
+        try {
+          return {
+            ...item,
+            item_data: JSON.parse(item.item_data)
+          };
+        } catch (e) {
+          return {
+            ...item,
+            item_data: {}
+          };
+        }
+      });
     }
     
     return {

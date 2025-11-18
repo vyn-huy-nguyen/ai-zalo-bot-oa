@@ -1,4 +1,7 @@
 import axios from "axios";
+import FormData from "form-data";
+import fs from "fs";
+import path from "path";
 import { getAccessToken } from "./token.js";
 
 /**
@@ -168,6 +171,165 @@ export async function sendGroupMessage(groupId, message, refreshToken, fallbackT
     }
   } catch (error) {
     console.error("❌ Error sending group message:", error.message);
+    throw error;
+  }
+}
+
+/**
+ * Upload file to Zalo and get token
+ * Reference: https://developers.zalo.me/docs/official-account/tin-nhan/upload_file
+ * Note: Official docs say only PDF/DOC/DOCX supported, max 5MB
+ * @param {string} filePath - Path to file to upload
+ * @param {string} refreshToken - Refresh token
+ * @param {string} fallbackToken - Fallback access token
+ * @returns {Promise<string>} File token from Zalo
+ */
+export async function uploadFile(filePath, refreshToken, fallbackToken) {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) {
+      throw new Error("File path is required and file must exist");
+    }
+
+    // Check file size (max 5MB as per Zalo docs)
+    const stats = fs.statSync(filePath);
+    const fileSizeInMB = stats.size / (1024 * 1024);
+    const maxSizeMB = 5;
+
+    if (fileSizeInMB > maxSizeMB) {
+      throw new Error(
+        `File size (${fileSizeInMB.toFixed(2)}MB) exceeds maximum allowed size (${maxSizeMB}MB)`
+      );
+    }
+
+    // Check file extension (official docs say PDF/DOC/DOCX, but we'll try CSV too)
+    const fileExt = path.extname(filePath).toLowerCase();
+    const supportedExts = [".pdf", ".doc", ".docx", ".csv"]; // CSV added for our use case
+    if (!supportedExts.includes(fileExt)) {
+      console.warn(
+        `⚠️  File extension ${fileExt} may not be supported. Official docs only mention PDF/DOC/DOCX`
+      );
+    }
+
+    const token = await getAccessToken(refreshToken, fallbackToken);
+
+    const endpoint = "https://openapi.zalo.me/v2.0/oa/upload/file";
+
+    // Create form data
+    const formData = new FormData();
+    // Ensure filename has correct extension (lowercase) - Zalo may be case-sensitive
+    const originalFileName = path.basename(filePath);
+    const fileNameWithoutExt = path.basename(filePath, fileExt);
+    const fileName = `${fileNameWithoutExt}${fileExt.toLowerCase()}`;
+    
+    // Read file into buffer (Zalo API may require file to be fully loaded)
+    const fileBuffer = fs.readFileSync(filePath);
+    
+    // Append file to form data
+    // According to Zalo docs: curl -F "file=@/home/test.docx"
+    // Try using buffer instead of stream for better compatibility
+    formData.append("file", fileBuffer, {
+      filename: fileName, // Use lowercase extension
+      contentType: fileExt === ".csv" ? "text/csv" : undefined, // Explicitly set for CSV
+    });
+
+    console.log(`📤 Uploading file to Zalo: ${filePath}`);
+    console.log(`   File size: ${fileSizeInMB.toFixed(2)}MB`);
+    console.log(`   File type: ${fileExt}`);
+
+    // Make request with proper headers
+    // access_token should be a separate header, not in form-data
+    const response = await axios.post(endpoint, formData, {
+      headers: {
+        ...formData.getHeaders(), // Sets Content-Type: multipart/form-data with boundary
+        access_token: token, // Separate header as per Zalo API docs
+      },
+      timeout: 30000, // 30 seconds for file upload
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
+    });
+
+    if (response.data && response.data.error === 0 && response.data.data?.token) {
+      console.log("✅ File uploaded successfully, token:", response.data.data.token);
+      return response.data.data.token;
+    } else {
+      // Handle error response from Zalo
+      const errorCode = response.data?.error;
+      const errorMsg = response.data?.message || "Unknown error";
+      
+      console.error(`❌ Zalo API error ${errorCode}: ${errorMsg}`);
+      console.error("   File path:", filePath);
+      console.error("   File extension:", fileExt);
+      console.error("   File size:", fileSizeInMB.toFixed(2), "MB");
+      
+      throw new Error(`Failed to upload file (Error ${errorCode}): ${errorMsg}`);
+    }
+  } catch (error) {
+    console.error("❌ Error uploading file:", error.message);
+    if (error.response) {
+      console.error("Response status:", error.response.status);
+      console.error("Response data:", error.response.data);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Send file message to GMF group
+ * Reference: https://developers.zalo.me/docs/official-account/nhom-chat-gmf/tin-nhan/file_message
+ * @param {string} groupId - Group ID
+ * @param {string} fileToken - Token from uploadFile function
+ * @param {string} refreshToken - Refresh token
+ * @param {string} fallbackToken - Fallback access token
+ * @returns {Promise<Object>} Response from Zalo API
+ */
+export async function sendGroupFile(groupId, fileToken, refreshToken, fallbackToken) {
+  try {
+    if (!groupId) {
+      throw new Error("Group ID is required");
+    }
+
+    if (!fileToken) {
+      throw new Error("File token is required");
+    }
+
+    const token = await getAccessToken(refreshToken, fallbackToken);
+
+    const endpoint = "https://openapi.zalo.me/v3.0/oa/group/message";
+
+    const requestBody = {
+      recipient: {
+        group_id: groupId,
+      },
+      message: {
+        attachment: {
+          type: "file",
+          payload: {
+            token: fileToken,
+          },
+        },
+      },
+    };
+
+    console.log(`📤 Sending file to group ${groupId}`);
+
+    const response = await axios.post(endpoint, requestBody, {
+      headers: {
+        "Content-Type": "application/json",
+        access_token: token,
+      },
+      timeout: 10000,
+    });
+
+    if (response.data && response.data.error === 0) {
+      console.log("✅ File sent successfully");
+      return response.data;
+    } else {
+      const errorMsg = response.data?.message || "Unknown error";
+      console.warn(`⚠️ Error response from Zalo API: ${errorMsg}`);
+      return response.data;
+    }
+  } catch (error) {
+    console.error("❌ Error sending group file:", error.message);
     throw error;
   }
 }
