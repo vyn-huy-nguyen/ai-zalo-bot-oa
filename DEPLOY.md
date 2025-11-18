@@ -254,10 +254,28 @@ sudo systemctl restart nginx
 
 ### 5.3. Cấu hình SSL với Let's Encrypt (Optional)
 
+#### Ubuntu/Debian:
 ```bash
 sudo apt install certbot python3-certbot-nginx -y
 sudo certbot --nginx -d your-domain.com
 ```
+
+#### Amazon Linux 2023:
+```bash
+# Cài đặt certbot
+sudo dnf install certbot python3-certbot-nginx -y
+
+# Hoặc nếu không có package, cài từ EPEL
+sudo dnf install epel-release -y
+sudo dnf install certbot python3-certbot-nginx -y
+
+# Chạy certbot
+sudo certbot --nginx -d your-domain.com
+```
+
+**Lưu ý:** Nếu bạn đang dùng IP thay vì domain, Let's Encrypt không thể cấp SSL cho IP. Bạn cần:
+- Có domain trỏ về IP của EC2
+- Hoặc sử dụng HTTP (không có SSL) với IP
 
 ## Bước 6: Cấu hình Webhook trong Zalo Developer Console
 
