@@ -8,7 +8,7 @@ module.exports = {
       exec_mode: "fork",
       env: {
         NODE_ENV: "production",
-        PORT: 3000,
+        PORT: 3001, // Changed to 3001 to avoid conflict with other services
       },
       // Logging
       error_file: "./logs/err.log",
