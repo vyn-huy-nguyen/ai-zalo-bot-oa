@@ -111,9 +111,9 @@ nano .env
 - `ZALO_APP_ID`, `ZALO_APP_SECRET`, `ZALO_OA_ID`
 - `ZALO_ACCESS_TOKEN`, `ZALO_REFRESH_TOKEN`
 - `WEBHOOK_VERIFY_TOKEN`, `WEBHOOK_SECRET`
-- `SERVER_URL` (URL public của server, ví dụ: `https://your-domain.com` hoặc `http://your-ec2-ip:3000`)
+- `SERVER_URL` (URL public của server, ví dụ: `https://your-domain.com` hoặc `http://your-ec2-ip:3001`)
 - `GEMINI_API_KEY`, `GEMINI_MODEL`
-- `PORT` (mặc định 3000)
+- `PORT` (mặc định 3001 - được set trong ecosystem.config.cjs)
 
 ## Bước 3: Cấu hình PM2
 
@@ -149,7 +149,7 @@ pm2 logs zalo-bot-oa
 
 ### 4.1. Mở port trong EC2 Security Group (AWS Console)
 
-- Port 3000 (hoặc port bạn đã cấu hình)
+- Port 3001 (port mặc định của ứng dụng, hoặc port bạn đã cấu hình)
 - Port 80, 443 (nếu dùng Nginx)
 
 **Quan trọng:** Phải mở port trong EC2 Security Group từ AWS Console!
@@ -159,7 +159,7 @@ pm2 logs zalo-bot-oa
 #### Ubuntu/Debian (UFW):
 ```bash
 sudo ufw allow 22/tcp    # SSH
-sudo ufw allow 3000/tcp  # App port
+sudo ufw allow 3001/tcp  # App port (mặc định 3001)
 sudo ufw allow 80/tcp     # HTTP (nếu dùng Nginx)
 sudo ufw allow 443/tcp    # HTTPS (nếu dùng Nginx)
 sudo ufw enable
@@ -177,7 +177,7 @@ sudo systemctl start firewalld
 
 # Mở ports
 sudo firewall-cmd --permanent --add-port=22/tcp    # SSH
-sudo firewall-cmd --permanent --add-port=3000/tcp # App port
+sudo firewall-cmd --permanent --add-port=3001/tcp # App port (mặc định 3001)
 sudo firewall-cmd --permanent --add-port=80/tcp   # HTTP (nếu dùng Nginx)
 sudo firewall-cmd --permanent --add-port=443/tcp  # HTTPS (nếu dùng Nginx)
 sudo firewall-cmd --reload
@@ -209,7 +209,7 @@ server {
 
     # Proxy to Node.js app
     location / {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://localhost:3001;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -251,7 +251,7 @@ sudo certbot --nginx -d your-domain.com
 2. Vào ứng dụng của bạn
 3. Cấu hình Webhook URL:
    - Nếu dùng domain: `https://your-domain.com/webhook`
-   - Nếu dùng IP: `http://your-ec2-ip:3000/webhook`
+   - Nếu dùng IP: `http://your-ec2-ip:3001/webhook`
 4. Điền `WEBHOOK_VERIFY_TOKEN` (phải khớp với trong file .env)
 5. Lưu và verify webhook
 
@@ -277,10 +277,10 @@ pm2 stop zalo-bot-oa
 
 ```bash
 # Health check
-curl http://localhost:3000/health
+curl http://localhost:3001/health
 
 # Hoặc từ bên ngoài
-curl http://your-ec2-ip:3000/health
+curl http://your-ec2-ip:3001/health
 ```
 
 ## Bước 8: Backup và Maintenance
@@ -340,7 +340,9 @@ pm2 logs zalo-bot-oa --lines 100
 cat .env
 
 # Kiểm tra port đã được sử dụng chưa
-sudo lsof -i :3000
+sudo lsof -i :3001
+# Hoặc
+sudo netstat -tulpn | grep :3001
 
 # Kiểm tra file script có tồn tại không
 ls -la src/index.js
