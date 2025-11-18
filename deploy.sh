@@ -54,7 +54,7 @@ fi
 # Start with PM2
 echo "🚀 Starting application with PM2..."
 # Try ecosystem config first, fallback to direct path if fails
-if ! pm2 start ecosystem.config.js 2>/dev/null; then
+if ! pm2 start ecosystem.config.cjs 2>/dev/null; then
     echo -e "${YELLOW}⚠️  Ecosystem config failed, using direct path...${NC}"
     pm2 start src/index.js --name zalo-bot-oa
 fi

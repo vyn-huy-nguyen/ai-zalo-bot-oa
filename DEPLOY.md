@@ -96,8 +96,8 @@ nano .env
 ### 3.1. Khởi động ứng dụng với PM2
 
 ```bash
-# Option 1: Dùng ecosystem config (CommonJS format)
-pm2 start ecosystem.config.js
+# Option 1: Dùng ecosystem config (file .cjs để tránh conflict với ES modules)
+pm2 start ecosystem.config.cjs
 
 # Option 2: Nếu vẫn lỗi, dùng đường dẫn trực tiếp
 pm2 start src/index.js --name zalo-bot-oa
