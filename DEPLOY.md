@@ -2,7 +2,7 @@
 
 ## Yêu cầu
 
-- EC2 instance (Ubuntu 20.04+ hoặc Amazon Linux 2)
+- EC2 instance (Ubuntu 20.04+, Amazon Linux 2, hoặc Amazon Linux 2023)
 - Node.js 18+ và npm
 - PM2 (process manager)
 - Nginx (optional, cho reverse proxy)
@@ -12,23 +12,38 @@
 ### 1.1. Kết nối vào EC2
 
 ```bash
+# Ubuntu
 ssh -i your-key.pem ubuntu@your-ec2-ip
+
+# Amazon Linux 2023
+ssh -i your-key.pem ec2-user@your-ec2-ip
 ```
 
 ### 1.2. Cập nhật hệ thống
 
 ```bash
+# Ubuntu/Debian
 sudo apt update && sudo apt upgrade -y
+
+# Amazon Linux 2023
+sudo dnf update -y
 ```
 
 ### 1.3. Cài đặt Node.js 18+
 
+#### Ubuntu/Debian:
 ```bash
-# Ubuntu/Debian
 curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
 sudo apt-get install -y nodejs
+```
 
-# Hoặc dùng nvm
+#### Amazon Linux 2023:
+```bash
+# Cài đặt Node.js 18 từ NodeSource
+curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash -
+sudo dnf install -y nodejs
+
+# Hoặc dùng nvm (khuyến nghị)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
 source ~/.bashrc
 nvm install 18
@@ -44,7 +59,13 @@ sudo npm install -g pm2
 ### 1.5. Cài đặt Nginx (optional)
 
 ```bash
+# Ubuntu/Debian
 sudo apt install nginx -y
+
+# Amazon Linux 2023
+sudo dnf install nginx -y
+sudo systemctl enable nginx
+sudo systemctl start nginx
 ```
 
 ## Bước 2: Deploy Code
@@ -58,8 +79,11 @@ git clone your-repo-url
 cd ai-zalo-bot-oa
 
 # Option 2: Upload code bằng SCP
-# Từ máy local:
+# Từ máy local (Ubuntu):
 scp -i your-key.pem -r ai-zalo-bot-oa ubuntu@your-ec2-ip:~/
+
+# Từ máy local (Amazon Linux):
+scp -i your-key.pem -r ai-zalo-bot-oa ec2-user@your-ec2-ip:~/
 ```
 
 ### 2.2. Cài đặt dependencies
@@ -123,20 +147,46 @@ pm2 logs zalo-bot-oa
 
 ## Bước 4: Cấu hình Firewall
 
-### 4.1. Mở port trong EC2 Security Group
+### 4.1. Mở port trong EC2 Security Group (AWS Console)
 
 - Port 3000 (hoặc port bạn đã cấu hình)
 - Port 80, 443 (nếu dùng Nginx)
 
-### 4.2. Cấu hình UFW (Ubuntu Firewall)
+**Quan trọng:** Phải mở port trong EC2 Security Group từ AWS Console!
 
+### 4.2. Cấu hình Firewall trên Server
+
+#### Ubuntu/Debian (UFW):
 ```bash
 sudo ufw allow 22/tcp    # SSH
 sudo ufw allow 3000/tcp  # App port
-sudo ufw allow 80/tcp    # HTTP (nếu dùng Nginx)
-sudo ufw allow 443/tcp   # HTTPS (nếu dùng Nginx)
+sudo ufw allow 80/tcp     # HTTP (nếu dùng Nginx)
+sudo ufw allow 443/tcp    # HTTPS (nếu dùng Nginx)
 sudo ufw enable
 ```
+
+#### Amazon Linux 2023 (firewalld):
+```bash
+# Kiểm tra firewalld có chạy không
+sudo systemctl status firewalld
+
+# Nếu chưa cài, cài đặt:
+sudo dnf install firewalld -y
+sudo systemctl enable firewalld
+sudo systemctl start firewalld
+
+# Mở ports
+sudo firewall-cmd --permanent --add-port=22/tcp    # SSH
+sudo firewall-cmd --permanent --add-port=3000/tcp # App port
+sudo firewall-cmd --permanent --add-port=80/tcp   # HTTP (nếu dùng Nginx)
+sudo firewall-cmd --permanent --add-port=443/tcp  # HTTPS (nếu dùng Nginx)
+sudo firewall-cmd --reload
+
+# Kiểm tra
+sudo firewall-cmd --list-all
+```
+
+**Lưu ý:** Amazon Linux 2023 thường không cần cấu hình firewall trên server nếu đã mở trong Security Group. Nhưng nếu muốn thêm lớp bảo mật, có thể dùng firewalld.
 
 ## Bước 5: Cấu hình Nginx (Optional - Recommended)
 
@@ -260,7 +310,10 @@ chmod +x ~/backup-db.sh
 # Thêm vào crontab (backup mỗi ngày lúc 2h sáng)
 crontab -e
 # Thêm dòng:
+# Ubuntu:
 0 2 * * * /home/ubuntu/backup-db.sh
+# Amazon Linux:
+0 2 * * * /home/ec2-user/backup-db.sh
 ```
 
 ### 8.2. Cleanup old CSV files
@@ -268,6 +321,9 @@ crontab -e
 Ứng dụng tự động cleanup, nhưng có thể thêm cron job:
 
 ```bash
+# Thêm vào crontab
+crontab -e
+
 # Cleanup CSV files older than 7 days
 0 3 * * * find ~/ai-zalo-bot-oa/data/exports -name "*.csv" -mtime +7 -delete
 ```
