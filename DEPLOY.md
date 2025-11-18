@@ -192,16 +192,22 @@ sudo firewall-cmd --list-all
 
 ### 5.1. Tạo Nginx config
 
+#### Ubuntu/Debian:
 ```bash
 sudo nano /etc/nginx/sites-available/zalo-bot
 ```
 
-Nội dung:
+#### Amazon Linux 2023:
+```bash
+sudo nano /etc/nginx/conf.d/zalo-bot.conf
+```
+
+Nội dung (thay `18.141.138.124` bằng IP hoặc domain của bạn):
 
 ```nginx
 server {
     listen 80;
-    server_name your-domain.com;  # Hoặc your-ec2-ip
+    server_name 18.141.138.124;  # Thay bằng IP hoặc domain của bạn
 
     # Logging
     access_log /var/log/nginx/zalo-bot-access.log;
@@ -232,8 +238,16 @@ server {
 
 ### 5.2. Enable site và test
 
+#### Ubuntu/Debian:
 ```bash
 sudo ln -s /etc/nginx/sites-available/zalo-bot /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+#### Amazon Linux 2023:
+```bash
+# File đã nằm trong conf.d nên không cần symlink
 sudo nginx -t
 sudo systemctl restart nginx
 ```
