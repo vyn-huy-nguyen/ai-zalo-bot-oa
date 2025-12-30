@@ -1,0 +1,24 @@
+HƯỚNG DẪN SỬ DỤNG BOT
+
+Lệnh /p - Phân tích và lưu dữ liệu
+Gửi: /p [nội dung]
+Ví dụ:
+/p Chân hp/1000:60 cái
+Thanh nẹp v5:4 thanh
+Vít nở 6:1200cái
+
+Bot sẽ phân tích, lưu vào database và gửi link CSV về nhóm.
+
+Lệnh /t - Truy vấn dữ liệu
+Gửi: /t [câu hỏi]
+Ví dụ:
+/t Tổng số lượng sản phẩm là bao nhiêu?
+/t Có bao nhiêu mặt hàng đã được nhập?
+
+Bot sẽ trả lời dựa trên dữ liệu đã lưu.
+
+Lưu ý:
+- Lệnh phải bắt đầu bằng /p hoặc /t
+- Phải có nội dung sau lệnh
+- Chỉ hoạt động trong nhóm GMF
+
